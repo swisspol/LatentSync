@@ -43,6 +43,10 @@ def read_json(filepath: str):
     return json_dict
 
 
+def read_video_frames(video_path: str):
+    pass
+
+
 def read_video(video_path: str, change_fps=True, use_decord=True):
     if change_fps:
         temp_dir = "temp"
@@ -121,6 +125,22 @@ def write_video(video_output_path: str, video_frames: np.ndarray, fps: int):
     ) as writer:
         for video_frame in video_frames:
             writer.append_data(video_frame)
+
+
+def write_video_frames(video_output_path: str, video_frames: np.ndarray):
+    compression_params = [
+        cv2.IMWRITE_PNG_COMPRESSION,
+        0,  # No compression for max quality
+        cv2.IMWRITE_PNG_STRATEGY,
+        cv2.IMWRITE_PNG_STRATEGY_DEFAULT,
+    ]
+    for i, frame in enumerate(video_frames):
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(
+            os.path.join(video_output_path, f"frame_{i:04d}.png"),
+            frame,
+            compression_params,
+        )
 
 
 def init_dist(backend="nccl", **kwargs):

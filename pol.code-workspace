@@ -3,5 +3,11 @@
     {
       "path": "."
     }
-  ]
+  ],
+  "settings": {
+    "explorer.excludeGitIgnore": false,
+    "files.exclude": {
+      "**/__pycache__": true
+    }
+  }
 }

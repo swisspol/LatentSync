@@ -27,10 +27,15 @@ from diffusers.schedulers import (
 from diffusers.utils import deprecate, logging
 
 from einops import rearrange
-import cv2
 
 from ..models.unet import UNet3DConditionModel
-from ..utils.util import read_video, read_audio, write_video, check_ffmpeg_installed
+from ..utils.util import (
+    read_video,
+    read_video_frames,
+    read_audio,
+    write_video_frames,
+    check_ffmpeg_installed,
+)
 from ..utils.image_processor import ImageProcessor, load_fixed_mask
 from ..whisper.audio2feature import Audio2Feature
 import tqdm
@@ -58,7 +63,10 @@ class LipsyncPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if (
+            hasattr(scheduler.config, "steps_offset")
+            and scheduler.config.steps_offset != 1
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -67,12 +75,17 @@ class LipsyncPipeline(DiffusionPipeline):
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
                 " file"
             )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if (
+            hasattr(scheduler.config, "clip_sample")
+            and scheduler.config.clip_sample is True
+        ):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -80,16 +93,23 @@ class LipsyncPipeline(DiffusionPipeline):
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "clip_sample not set", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        is_unet_version_less_0_9_0 = hasattr(denoising_unet.config, "_diffusers_version") and version.parse(
+        is_unet_version_less_0_9_0 = hasattr(
+            denoising_unet.config, "_diffusers_version"
+        ) and version.parse(
             version.parse(denoising_unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
+        ) < version.parse(
+            "0.9.0.dev0"
+        )
         is_unet_sample_size_less_64 = (
-            hasattr(denoising_unet.config, "sample_size") and denoising_unet.config.sample_size < 64
+            hasattr(denoising_unet.config, "sample_size")
+            and denoising_unet.config.sample_size < 64
         )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
@@ -103,7 +123,9 @@ class LipsyncPipeline(DiffusionPipeline):
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
                 " the `unet/config.json` file"
             )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "sample_size<64", "1.0.0", deprecation_message, standard_warn=False
+            )
             new_config = dict(denoising_unet.config)
             new_config["sample_size"] = 64
             denoising_unet._internal_dict = FrozenDict(new_config)
@@ -127,7 +149,9 @@ class LipsyncPipeline(DiffusionPipeline):
 
     @property
     def _execution_device(self):
-        if self.device != torch.device("meta") or not hasattr(self.denoising_unet, "_hf_hook"):
+        if self.device != torch.device("meta") or not hasattr(
+            self.denoising_unet, "_hf_hook"
+        ):
             return self.device
         for module in self.denoising_unet.modules():
             if (
@@ -139,7 +163,9 @@ class LipsyncPipeline(DiffusionPipeline):
         return self.device
 
     def decode_latents(self, latents):
-        latents = latents / self.vae.config.scaling_factor + self.vae.config.shift_factor
+        latents = (
+            latents / self.vae.config.scaling_factor + self.vae.config.shift_factor
+        )
         latents = rearrange(latents, "b c f h w -> (b f) c h w")
         decoded_latents = self.vae.decode(latents).sample
         return decoded_latents
@@ -150,13 +176,17 @@ class LipsyncPipeline(DiffusionPipeline):
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_eta = "eta" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        accepts_generator = "generator" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -165,17 +195,30 @@ class LipsyncPipeline(DiffusionPipeline):
         assert height == width, "Height and width must be equal"
 
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
+            )
 
         if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+            callback_steps is not None
+            and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_frames, num_channels_latents, height, width, dtype, device, generator):
+    def prepare_latents(
+        self,
+        batch_size,
+        num_frames,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+    ):
         shape = (
             batch_size,
             num_channels_latents,
@@ -184,7 +227,9 @@ class LipsyncPipeline(DiffusionPipeline):
             width // self.vae_scale_factor,
         )
         rand_device = "cpu" if device.type == "mps" else device
-        latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        latents = torch.randn(
+            shape, generator=generator, device=rand_device, dtype=dtype
+        ).to(device)
         latents = latents.repeat(1, 1, num_frames, 1, 1)
 
         # scale the initial noise by the standard deviation required by the scheduler
@@ -192,7 +237,15 @@ class LipsyncPipeline(DiffusionPipeline):
         return latents
 
     def prepare_mask_latents(
-        self, mask, masked_image, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        mask,
+        masked_image,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -203,8 +256,12 @@ class LipsyncPipeline(DiffusionPipeline):
         masked_image = masked_image.to(device=device, dtype=dtype)
 
         # encode the mask image into latents space so we can concatenate it to the latents
-        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(
+            generator=generator
+        )
+        masked_image_latents = (
+            masked_image_latents - self.vae.config.shift_factor
+        ) * self.vae.config.scaling_factor
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
@@ -216,16 +273,26 @@ class LipsyncPipeline(DiffusionPipeline):
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
         masked_image_latents = (
-            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+            torch.cat([masked_image_latents] * 2)
+            if do_classifier_free_guidance
+            else masked_image_latents
         )
         return mask, masked_image_latents
 
-    def prepare_image_latents(self, images, device, dtype, generator, do_classifier_free_guidance):
+    def prepare_image_latents(
+        self, images, device, dtype, generator, do_classifier_free_guidance
+    ):
         images = images.to(device=device, dtype=dtype)
         image_latents = self.vae.encode(images).latent_dist.sample(generator=generator)
-        image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        image_latents = (
+            image_latents - self.vae.config.shift_factor
+        ) * self.vae.config.scaling_factor
         image_latents = rearrange(image_latents, "f c h w -> 1 c f h w")
-        image_latents = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
+        image_latents = (
+            torch.cat([image_latents] * 2)
+            if do_classifier_free_guidance
+            else image_latents
+        )
 
         return image_latents
 
@@ -235,7 +302,9 @@ class LipsyncPipeline(DiffusionPipeline):
         self._progress_bar_config.update(kwargs)
 
     @staticmethod
-    def paste_surrounding_pixels_back(decoded_latents, pixel_values, masks, device, weight_dtype):
+    def paste_surrounding_pixels_back(
+        decoded_latents, pixel_values, masks, device, weight_dtype
+    ):
         # Paste the surrounding pixels back, because we only want to change the mouth region
         pixel_values = pixel_values.to(device=device, dtype=weight_dtype)
         masks = masks.to(device=device, dtype=weight_dtype)
@@ -264,7 +333,13 @@ class LipsyncPipeline(DiffusionPipeline):
         faces = torch.stack(faces)
         return faces, boxes, affine_matrices
 
-    def restore_video(self, faces: torch.Tensor, video_frames: np.ndarray, boxes: list, affine_matrices: list):
+    def restore_video(
+        self,
+        faces: torch.Tensor,
+        video_frames: np.ndarray,
+        boxes: list,
+        affine_matrices: list,
+    ):
         video_frames = video_frames[: len(faces)]
         out_frames = []
         print(f"Restoring {len(faces)} faces...")
@@ -272,12 +347,16 @@ class LipsyncPipeline(DiffusionPipeline):
             x1, y1, x2, y2 = boxes[index]
             height = int(y2 - y1)
             width = int(x2 - x1)
-            face = torchvision.transforms.functional.resize(face, size=(height, width), antialias=True)
+            face = torchvision.transforms.functional.resize(
+                face, size=(height, width), antialias=True
+            )
             face = rearrange(face, "c h w -> h w c")
             face = (face / 2 + 0.5).clamp(0, 1)
             face = (face * 255).to(torch.uint8).cpu().numpy()
             # face = cv2.resize(face, (width, height), interpolation=cv2.INTER_LANCZOS4)
-            out_frame = self.image_processor.restorer.restore_img(video_frames[index], face, affine_matrices[index])
+            out_frame = self.image_processor.restorer.restore_img(
+                video_frames[index], face, affine_matrices[index]
+            )
             out_frames.append(out_frame)
         return np.stack(out_frames, axis=0)
 
@@ -302,7 +381,9 @@ class LipsyncPipeline(DiffusionPipeline):
                     loop_boxes += boxes[::-1]
                     loop_affine_matrices += affine_matrices[::-1]
 
-            video_frames = np.concatenate(loop_video_frames, axis=0)[: len(whisper_chunks)]
+            video_frames = np.concatenate(loop_video_frames, axis=0)[
+                : len(whisper_chunks)
+            ]
             faces = torch.cat(loop_faces, dim=0)[: len(whisper_chunks)]
             boxes = loop_boxes[: len(whisper_chunks)]
             affine_matrices = loop_affine_matrices[: len(whisper_chunks)]
@@ -343,11 +424,15 @@ class LipsyncPipeline(DiffusionPipeline):
         batch_size = 1
         device = self._execution_device
         mask_image = load_fixed_mask(height, mask_image_path)
-        self.image_processor = ImageProcessor(height, device="cuda", mask_image=mask_image)
+        self.image_processor = ImageProcessor(
+            height, device="cuda", mask_image=mask_image
+        )
         self.set_progress_bar_config(desc=f"Sample frames: {num_frames}")
 
         # 1. Default height and width to unet
-        height = height or self.denoising_unet.config.sample_size * self.vae_scale_factor
+        height = (
+            height or self.denoising_unet.config.sample_size * self.vae_scale_factor
+        )
         width = width or self.denoising_unet.config.sample_size * self.vae_scale_factor
 
         # 2. Check inputs
@@ -366,12 +451,19 @@ class LipsyncPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         whisper_feature = self.audio_encoder.audio2feat(audio_path)
-        whisper_chunks = self.audio_encoder.feature2chunks(feature_array=whisper_feature, fps=video_fps)
+        whisper_chunks = self.audio_encoder.feature2chunks(
+            feature_array=whisper_feature, fps=video_fps
+        )
 
         audio_samples = read_audio(audio_path)
-        video_frames = read_video(video_path, use_decord=False)
+        if os.path.isdir(video_path):
+            video_frames = read_video_frames(video_path)
+        else:
+            video_frames = read_video(video_path, use_decord=False)
 
-        video_frames, faces, boxes, affine_matrices = self.loop_video(whisper_chunks, video_frames)
+        video_frames, faces, boxes, affine_matrices = self.loop_video(
+            whisper_chunks, video_frames
+        )
 
         synced_video_frames = []
 
@@ -392,7 +484,9 @@ class LipsyncPipeline(DiffusionPipeline):
         num_inferences = math.ceil(len(whisper_chunks) / num_frames)
         for i in tqdm.tqdm(range(num_inferences), desc="Doing inference..."):
             if self.denoising_unet.add_audio_layer:
-                audio_embeds = torch.stack(whisper_chunks[i * num_frames : (i + 1) * num_frames])
+                audio_embeds = torch.stack(
+                    whisper_chunks[i * num_frames : (i + 1) * num_frames]
+                )
                 audio_embeds = audio_embeds.to(device, dtype=weight_dtype)
                 if do_classifier_free_guidance:
                     null_audio_embeds = torch.zeros_like(audio_embeds)
@@ -401,8 +495,10 @@ class LipsyncPipeline(DiffusionPipeline):
                 audio_embeds = None
             inference_faces = faces[i * num_frames : (i + 1) * num_frames]
             latents = all_latents[:, :, i * num_frames : (i + 1) * num_frames]
-            ref_pixel_values, masked_pixel_values, masks = self.image_processor.prepare_masks_and_masked_images(
-                inference_faces, affine_transform=False
+            ref_pixel_values, masked_pixel_values, masks = (
+                self.image_processor.prepare_masks_and_masked_images(
+                    inference_faces, affine_transform=False
+                )
             )
 
             # 7. Prepare mask latent variables
@@ -427,17 +523,31 @@ class LipsyncPipeline(DiffusionPipeline):
             )
 
             # 9. Denoising loop
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            num_warmup_steps = (
+                len(timesteps) - num_inference_steps * self.scheduler.order
+            )
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for j, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
-                    denoising_unet_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                    denoising_unet_input = (
+                        torch.cat([latents] * 2)
+                        if do_classifier_free_guidance
+                        else latents
+                    )
 
-                    denoising_unet_input = self.scheduler.scale_model_input(denoising_unet_input, t)
+                    denoising_unet_input = self.scheduler.scale_model_input(
+                        denoising_unet_input, t
+                    )
 
                     # concat latents, mask, masked_image_latents in the channel dimension
                     denoising_unet_input = torch.cat(
-                        [denoising_unet_input, mask_latents, masked_image_latents, ref_latents], dim=1
+                        [
+                            denoising_unet_input,
+                            mask_latents,
+                            masked_image_latents,
+                            ref_latents,
+                        ],
+                        dim=1,
                     )
 
                     # predict the noise residual
@@ -448,13 +558,20 @@ class LipsyncPipeline(DiffusionPipeline):
                     # perform guidance
                     if do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_audio = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_audio - noise_pred_uncond)
+                        noise_pred = noise_pred_uncond + guidance_scale * (
+                            noise_pred_audio - noise_pred_uncond
+                        )
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                    latents = self.scheduler.step(
+                        noise_pred, t, latents, **extra_step_kwargs
+                    ).prev_sample
 
                     # call the callback, if provided
-                    if j == len(timesteps) - 1 or ((j + 1) > num_warmup_steps and (j + 1) % self.scheduler.order == 0):
+                    if j == len(timesteps) - 1 or (
+                        (j + 1) > num_warmup_steps
+                        and (j + 1) % self.scheduler.order == 0
+                    ):
                         progress_bar.update()
                         if callback is not None and j % callback_steps == 0:
                             callback(j, t, latents)
@@ -466,9 +583,13 @@ class LipsyncPipeline(DiffusionPipeline):
             )
             synced_video_frames.append(decoded_latents)
 
-        synced_video_frames = self.restore_video(torch.cat(synced_video_frames), video_frames, boxes, affine_matrices)
+        synced_video_frames = self.restore_video(
+            torch.cat(synced_video_frames), video_frames, boxes, affine_matrices
+        )
 
-        audio_samples_remain_length = int(synced_video_frames.shape[0] / video_fps * audio_sample_rate)
+        audio_samples_remain_length = int(
+            synced_video_frames.shape[0] / video_fps * audio_sample_rate
+        )
         audio_samples = audio_samples[:audio_samples_remain_length].cpu().numpy()
 
         if is_train:
@@ -479,9 +600,9 @@ class LipsyncPipeline(DiffusionPipeline):
             shutil.rmtree(temp_dir)
         os.makedirs(temp_dir, exist_ok=True)
 
-        write_video(os.path.join(temp_dir, "video.mp4"), synced_video_frames, fps=25)
+        write_video_frames(temp_dir, synced_video_frames)
 
         sf.write(os.path.join(temp_dir, "audio.wav"), audio_samples, audio_sample_rate)
 
-        command = f"ffmpeg -y -loglevel error -nostdin -i {os.path.join(temp_dir, 'video.mp4')} -i {os.path.join(temp_dir, 'audio.wav')} -c:v libx264 -crf 18 -c:a aac -q:v 0 -q:a 0 {video_out_path}"
+        command = f"ffmpeg -y -loglevel error -nostdin -i {os.path.join(temp_dir, 'frame_%04d.png')} -i {os.path.join(temp_dir, 'audio.wav')} -framerate 25 -c:v libx264 -crf 18 -c:a aac -q:v 0 -q:a 0 '{video_out_path}'"
         subprocess.run(command, shell=True)
