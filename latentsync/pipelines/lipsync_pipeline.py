@@ -161,19 +161,11 @@ class LipsyncPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def check_inputs(self, height, width, callback_steps):
+    def check_inputs(self, height, width):
         assert height == width, "Height and width must be equal"
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
     def prepare_latents(self, batch_size, num_frames, num_channels_latents, height, width, dtype, device, generator):
         shape = (
@@ -264,9 +256,9 @@ class LipsyncPipeline(DiffusionPipeline):
         faces = torch.stack(faces)
         return faces, boxes, affine_matrices
 
-    def restore_video(self, faces: torch.Tensor, video_frames: np.ndarray, boxes: list, affine_matrices: list):
-        video_frames = video_frames[: len(faces)]
-        out_frames = []
+    def restore_video(self, faces: torch.Tensor, h: int, w: int, boxes: list, affine_matrices: list):
+        out_faces = []
+        out_masks = []
         print(f"Restoring {len(faces)} faces...")
         for index, face in enumerate(tqdm.tqdm(faces)):
             x1, y1, x2, y2 = boxes[index]
@@ -277,9 +269,10 @@ class LipsyncPipeline(DiffusionPipeline):
             face = (face / 2 + 0.5).clamp(0, 1)
             face = (face * 255).to(torch.uint8).cpu().numpy()
             # face = cv2.resize(face, (width, height), interpolation=cv2.INTER_LANCZOS4)
-            out_frame = self.image_processor.restorer.restore_img(video_frames[index], face, affine_matrices[index])
-            out_frames.append(out_frame)
-        return np.stack(out_frames, axis=0)
+            out_face, out_mask = self.image_processor.restorer.restore_img(h, w, face, affine_matrices[index])
+            out_faces.append(out_face)
+            out_masks.append(out_mask)
+        return (torch.stack(out_faces), torch.stack(out_masks))
 
     def loop_video(self, whisper_chunks: list, video_frames: np.ndarray):
         # If the audio is longer than the video, we need to loop the video
@@ -315,13 +308,10 @@ class LipsyncPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        video_path: str,
+        video_frames: Optional[np.ndarray],
         audio_path: str,
-        video_out_path: str,
-        video_mask_path: str = None,
         num_frames: int = 16,
         video_fps: int = 25,
-        audio_sample_rate: int = 16000,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 20,
@@ -330,14 +320,11 @@ class LipsyncPipeline(DiffusionPipeline):
         eta: float = 0.0,
         mask_image_path: str = "latentsync/utils/mask.png",
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback: Optional[Callable[[int, int, int, int], None]] = None,
         **kwargs,
     ):
         is_train = self.denoising_unet.training
         self.denoising_unet.eval()
-
-        check_ffmpeg_installed()
 
         # 0. Define call parameters
         batch_size = 1
@@ -351,7 +338,7 @@ class LipsyncPipeline(DiffusionPipeline):
         width = width or self.denoising_unet.config.sample_size * self.vae_scale_factor
 
         # 2. Check inputs
-        self.check_inputs(height, width, callback_steps)
+        self.check_inputs(height, width)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -367,9 +354,6 @@ class LipsyncPipeline(DiffusionPipeline):
 
         whisper_feature = self.audio_encoder.audio2feat(audio_path)
         whisper_chunks = self.audio_encoder.feature2chunks(feature_array=whisper_feature, fps=video_fps)
-
-        audio_samples = read_audio(audio_path)
-        video_frames = read_video(video_path, use_decord=False)
 
         video_frames, faces, boxes, affine_matrices = self.loop_video(whisper_chunks, video_frames)
 
@@ -456,8 +440,8 @@ class LipsyncPipeline(DiffusionPipeline):
                     # call the callback, if provided
                     if j == len(timesteps) - 1 or ((j + 1) > num_warmup_steps and (j + 1) % self.scheduler.order == 0):
                         progress_bar.update()
-                        if callback is not None and j % callback_steps == 0:
-                            callback(j, t, latents)
+                        if callback is not None:
+                            callback(i, num_inferences, j, num_inference_steps)
 
             # Recover the pixel values
             decoded_latents = self.decode_latents(latents)
@@ -466,22 +450,10 @@ class LipsyncPipeline(DiffusionPipeline):
             )
             synced_video_frames.append(decoded_latents)
 
-        synced_video_frames = self.restore_video(torch.cat(synced_video_frames), video_frames, boxes, affine_matrices)
-
-        audio_samples_remain_length = int(synced_video_frames.shape[0] / video_fps * audio_sample_rate)
-        audio_samples = audio_samples[:audio_samples_remain_length].cpu().numpy()
+        _, h, w, _ = video_frames.shape
+        synced_video_frames = self.restore_video(torch.cat(synced_video_frames), h, w, boxes, affine_matrices)
 
         if is_train:
             self.denoising_unet.train()
 
-        temp_dir = "temp"
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        os.makedirs(temp_dir, exist_ok=True)
-
-        write_video(os.path.join(temp_dir, "video.mp4"), synced_video_frames, fps=25)
-
-        sf.write(os.path.join(temp_dir, "audio.wav"), audio_samples, audio_sample_rate)
-
-        command = f"ffmpeg -y -loglevel error -nostdin -i {os.path.join(temp_dir, 'video.mp4')} -i {os.path.join(temp_dir, 'audio.wav')} -c:v libx264 -crf 18 -c:a aac -q:v 0 -q:a 0 {video_out_path}"
-        subprocess.run(command, shell=True)
+        return synced_video_frames
