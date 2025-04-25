@@ -43,8 +43,24 @@ def read_json(filepath: str):
     return json_dict
 
 
+# rm -rf assets/demo1_video
+# mkdir assets/demo1_video
+# ffmpeg -i assets/demo1_video.mp4 assets/demo1_video/output_%04d.png
+
+
 def read_video_frames(video_path: str):
-    pass
+    frames = []
+    files = sorted([f for f in os.listdir(video_path) if f.endswith(".png")])
+    for file in files:
+        file_path = os.path.join(video_path, file)
+        frame = cv2.imread(file_path)
+        if frame is None:
+            print(f"Error reading frame: {file_path}")
+            return np.array([])
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frames.append(frame_rgb)
+    print(f"Read {len(frames)} PNG frames from '{video_path}'")
+    return np.array(frames)
 
 
 def read_video(video_path: str, change_fps=True, use_decord=True):
@@ -141,6 +157,7 @@ def write_video_frames(video_output_path: str, video_frames: np.ndarray):
             frame,
             compression_params,
         )
+    print(f"Wrote {len(video_frames)} PNG frames to '{video_output_path}'")
 
 
 def init_dist(backend="nccl", **kwargs):
