@@ -43,6 +43,21 @@ def read_json(filepath: str):
     return json_dict
 
 
+def read_video_frames(video_path: str):
+    frames = []
+    files = sorted([f for f in os.listdir(video_path) if f.endswith(".png")])
+    for file in files:
+        file_path = os.path.join(video_path, file)
+        frame = cv2.imread(file_path)
+        if frame is None:
+            print(f"Error reading frame: {file_path}")
+            return np.array([])
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frames.append(frame_rgb)
+    print(f"Read {len(frames)} PNG frames from '{video_path}'")
+    return np.array(frames)
+
+
 def read_video(video_path: str, change_fps=True, use_decord=True):
     if change_fps:
         temp_dir = "temp"
@@ -133,6 +148,23 @@ def write_video_cv2(video_output_path: str, video_frames: np.ndarray, fps: int):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         out.write(frame)
     out.release()
+
+
+def write_video_frames(video_output_path: str, video_frames: np.ndarray):
+    compression_params = [
+        cv2.IMWRITE_PNG_COMPRESSION,
+        0,  # No compression for max quality
+        cv2.IMWRITE_PNG_STRATEGY,
+        cv2.IMWRITE_PNG_STRATEGY_DEFAULT,
+    ]
+    for i, frame in enumerate(video_frames):
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(
+            os.path.join(video_output_path, f"frame_{i:04d}.png"),
+            frame,
+            compression_params,
+        )
+    print(f"Wrote {len(video_frames)} PNG frames to '{video_output_path}'")
 
 
 def init_dist(backend="nccl", **kwargs):

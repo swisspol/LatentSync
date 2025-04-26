@@ -30,7 +30,7 @@ from einops import rearrange
 import cv2
 
 from ..models.unet import UNet3DConditionModel
-from ..utils.util import read_video, read_audio, write_video, check_ffmpeg_installed
+from ..utils.util import read_video, read_video_frames, read_audio, write_video, write_video_frames, check_ffmpeg_installed
 from ..utils.image_processor import ImageProcessor, load_fixed_mask
 from ..whisper.audio2feature import Audio2Feature
 import tqdm
@@ -317,7 +317,8 @@ class LipsyncPipeline(DiffusionPipeline):
         self,
         video_path: str,
         audio_path: str,
-        video_out_path: str,
+        video_out_path: str = None,
+        frames_out_path: str = None,
         video_mask_path: str = None,
         num_frames: int = 16,
         video_fps: int = 25,
@@ -474,14 +475,23 @@ class LipsyncPipeline(DiffusionPipeline):
         if is_train:
             self.denoising_unet.train()
 
-        temp_dir = "temp"
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        os.makedirs(temp_dir, exist_ok=True)
+        if video_out_path:
+            temp_dir = "temp"
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            os.makedirs(temp_dir, exist_ok=True)
 
-        write_video(os.path.join(temp_dir, "video.mp4"), synced_video_frames, fps=25)
+            write_video(
+                os.path.join(temp_dir, "video.mp4"), synced_video_frames, fps=25
+            )
 
-        sf.write(os.path.join(temp_dir, "audio.wav"), audio_samples, audio_sample_rate)
+            sf.write(
+                os.path.join(temp_dir, "audio.wav"), audio_samples, audio_sample_rate
+            )
 
-        command = f"ffmpeg -y -loglevel error -nostdin -i {os.path.join(temp_dir, 'video.mp4')} -i {os.path.join(temp_dir, 'audio.wav')} -c:v libx264 -crf 18 -c:a aac -q:v 0 -q:a 0 {video_out_path}"
-        subprocess.run(command, shell=True)
+            command = f"ffmpeg -y -loglevel error -nostdin -i {os.path.join(temp_dir, 'video.mp4')} -i {os.path.join(temp_dir, 'audio.wav')} -c:v libx264 -crf 18 -c:a aac -q:v 0 -q:a 0 {video_out_path}"
+            subprocess.run(command, shell=True)
+
+        if frames_out_path:
+            os.makedirs(frames_out_path, exist_ok=True)
+            write_video_frames(frames_out_path, synced_video_frames)

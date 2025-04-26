@@ -83,7 +83,8 @@ def main(config, args):
         video_path=args.video_path,
         audio_path=args.audio_path,
         video_out_path=args.video_out_path,
-        video_mask_path=args.video_out_path.replace(".mp4", "_mask.mp4"),
+        frames_out_path=args.frames_out_path,
+        video_mask_path=args.video_out_path.replace(".mp4", "_mask.mp4") if args.video_out_path else None,
         num_frames=config.data.num_frames,
         num_inference_steps=args.inference_steps,
         guidance_scale=args.guidance_scale,
@@ -100,7 +101,8 @@ if __name__ == "__main__":
     parser.add_argument("--inference_ckpt_path", type=str, required=True)
     parser.add_argument("--video_path", type=str, required=True)
     parser.add_argument("--audio_path", type=str, required=True)
-    parser.add_argument("--video_out_path", type=str, required=True)
+    parser.add_argument("--video_out_path", type=str)
+    parser.add_argument("--frames_out_path", type=str)
     parser.add_argument("--inference_steps", type=int, default=20)
     parser.add_argument("--guidance_scale", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=1247)
