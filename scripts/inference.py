@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Import OpenCV first to avoid issues with the `cv2` module
+import cv2
+
 import argparse
 import os
 from omegaconf import OmegaConf
