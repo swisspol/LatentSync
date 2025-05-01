@@ -319,7 +319,6 @@ class LipsyncPipeline(DiffusionPipeline):
         audio_path: str,
         video_frames: Optional[np.ndarray] = None,
         video_out_path: str = None,
-        frames_out_path: str = None,
         video_mask_path: str = None,
         num_frames: int = 16,
         video_fps: int = 25,
