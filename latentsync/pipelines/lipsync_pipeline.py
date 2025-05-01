@@ -30,7 +30,7 @@ from einops import rearrange
 import cv2
 
 from ..models.unet import UNet3DConditionModel
-from ..utils.util import read_video, read_audio, write_video, write_video_frames, check_ffmpeg_installed
+from ..utils.util import read_video, read_audio, write_video, check_ffmpeg_installed
 from ..utils.image_processor import ImageProcessor, load_fixed_mask
 from ..whisper.audio2feature import Audio2Feature
 import tqdm
@@ -494,6 +494,4 @@ class LipsyncPipeline(DiffusionPipeline):
             command = f"ffmpeg -y -loglevel error -nostdin -i {os.path.join(temp_dir, 'video.mp4')} -i {os.path.join(temp_dir, 'audio.wav')} -c:v libx264 -crf 18 -c:a aac -q:v 0 -q:a 0 {video_out_path}"
             subprocess.run(command, shell=True)
 
-        if frames_out_path:
-            os.makedirs(frames_out_path, exist_ok=True)
-            write_video_frames(frames_out_path, synced_video_frames)
+        return synced_video_frames
