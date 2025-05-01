@@ -30,7 +30,7 @@ from einops import rearrange
 import cv2
 
 from ..models.unet import UNet3DConditionModel
-from ..utils.util import read_video, read_video_frames, read_audio, write_video, write_video_frames, check_ffmpeg_installed
+from ..utils.util import read_video, read_audio, write_video, write_video_frames, check_ffmpeg_installed
 from ..utils.image_processor import ImageProcessor, load_fixed_mask
 from ..whisper.audio2feature import Audio2Feature
 import tqdm
@@ -317,6 +317,7 @@ class LipsyncPipeline(DiffusionPipeline):
         self,
         video_path: str,
         audio_path: str,
+        video_frames: Optional[np.array] = None,
         video_out_path: str = None,
         frames_out_path: str = None,
         video_mask_path: str = None,
@@ -370,10 +371,22 @@ class LipsyncPipeline(DiffusionPipeline):
         whisper_chunks = self.audio_encoder.feature2chunks(feature_array=whisper_feature, fps=video_fps)
 
         audio_samples = read_audio(audio_path)
-        if os.path.isdir(video_path):
-            video_frames = read_video_frames(video_path)
-        else:
+        if video_frames is None:
             video_frames = read_video(video_path, use_decord=False)
+
+        # def read_video_frames(video_path: str):
+        #     frames = []
+        #     files = sorted([f for f in os.listdir(video_path) if f.endswith(".png")])
+        #     for file in files:
+        #         file_path = os.path.join(video_path, file)
+        #         frame = cv2.imread(file_path)
+        #         if frame is None:
+        #             print(f"Error reading frame: {file_path}")
+        #             return np.array([])
+        #         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        #         frames.append(frame_rgb)
+        #     print(f"Read {len(frames)} PNG frames from '{video_path}'")
+        #     return np.array(frames)            
 
         video_frames, faces, boxes, affine_matrices = self.loop_video(whisper_chunks, video_frames)
 

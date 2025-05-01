@@ -43,21 +43,6 @@ def read_json(filepath: str):
     return json_dict
 
 
-def read_video_frames(video_path: str):
-    frames = []
-    files = sorted([f for f in os.listdir(video_path) if f.endswith(".png")])
-    for file in files:
-        file_path = os.path.join(video_path, file)
-        frame = cv2.imread(file_path)
-        if frame is None:
-            print(f"Error reading frame: {file_path}")
-            return np.array([])
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frames.append(frame_rgb)
-    print(f"Read {len(frames)} PNG frames from '{video_path}'")
-    return np.array(frames)
-
-
 def read_video(video_path: str, change_fps=True, use_decord=True):
     if change_fps:
         temp_dir = "temp"
