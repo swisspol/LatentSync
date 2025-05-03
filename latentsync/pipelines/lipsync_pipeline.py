@@ -279,7 +279,7 @@ class LipsyncPipeline(DiffusionPipeline):
             # face = cv2.resize(face, (width, height), interpolation=cv2.INTER_LANCZOS4)
             out_frame = self.image_processor.restorer.restore_img(video_frames[index], face, affine_matrices[index])
             out_frames.append(out_frame)
-        return np.stack(out_frames, axis=0)
+        return torch.stack(out_frames)
 
     def loop_video(self, whisper_chunks: list, video_frames: np.ndarray):
         # If the audio is longer than the video, we need to loop the video

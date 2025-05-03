@@ -99,9 +99,8 @@ class AlignRestore(object):
         inv_soft_mask_3d = inv_soft_mask.expand_as(inv_restored)
         tensor_img_back = inv_soft_mask_3d * pasted_face + (1 - inv_soft_mask_3d) * input_tensor
 
-        tensor_img_back = rearrange(tensor_img_back, "c h w -> h w c").contiguous().to(dtype=torch.uint8)
-        img_back = tensor_img_back.cpu().numpy()
-        return img_back
+        tensor_img_back = tensor_img_back / 255
+        return rearrange(tensor_img_back, "c h w -> h w c")
 
     def transformation_from_points(self, points1: torch.Tensor, points0: torch.Tensor, smooth=True, p_bias=None):
         if isinstance(points0, np.ndarray):
