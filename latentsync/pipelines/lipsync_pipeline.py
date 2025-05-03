@@ -264,8 +264,7 @@ class LipsyncPipeline(DiffusionPipeline):
         faces = torch.stack(faces)
         return faces, boxes, affine_matrices
 
-    def restore_video(self, faces: torch.Tensor, video_frames: np.ndarray, boxes: list, affine_matrices: list):
-        video_frames = video_frames[: len(faces)]
+    def restore_video(self, faces: torch.Tensor, h: int, w: int, boxes: list, affine_matrices: list):
         out_faces = []
         out_masks = []
         print(f"Restoring {len(faces)} faces...")
@@ -278,7 +277,7 @@ class LipsyncPipeline(DiffusionPipeline):
             face = (face / 2 + 0.5).clamp(0, 1)
             face = (face * 255).to(torch.uint8).cpu().numpy()
             # face = cv2.resize(face, (width, height), interpolation=cv2.INTER_LANCZOS4)
-            out_face, out_mask = self.image_processor.restorer.restore_img(video_frames[index], face, affine_matrices[index])
+            out_face, out_mask = self.image_processor.restorer.restore_img(h, w, face, affine_matrices[index])
             out_faces.append(out_face)
             out_masks.append(out_mask)
         return (torch.stack(out_faces), torch.stack(out_masks))
@@ -467,7 +466,8 @@ class LipsyncPipeline(DiffusionPipeline):
             )
             synced_video_frames.append(decoded_latents)
 
-        synced_video_frames = self.restore_video(torch.cat(synced_video_frames), video_frames, boxes, affine_matrices)
+        _, h, w, _ = video_frames.shape
+        synced_video_frames = self.restore_video(torch.cat(synced_video_frames), h, w, boxes, affine_matrices)
 
         if is_train:
             self.denoising_unet.train()

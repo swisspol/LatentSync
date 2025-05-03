@@ -41,9 +41,7 @@ class AlignRestore(object):
         cropped_face = rearrange(crop_tensor.squeeze(0), "c h w -> h w c").cpu().numpy().astype(np.uint8)
         return cropped_face, affine_matrix
 
-    def restore_img(self, input_img, face, torch_affine_matrix):
-        h, w, _ = input_img.shape
-
+    def restore_img(self, h, w, face, torch_affine_matrix):
         if isinstance(torch_affine_matrix, np.ndarray):
             torch_affine_matrix = (
                 torch.from_numpy(torch_affine_matrix).to(device=self.device, dtype=self.dtype).unsqueeze(0)
