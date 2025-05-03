@@ -367,7 +367,6 @@ class LipsyncPipeline(DiffusionPipeline):
         whisper_feature = self.audio_encoder.audio2feat(audio_path)
         whisper_chunks = self.audio_encoder.feature2chunks(feature_array=whisper_feature, fps=video_fps)
 
-        audio_samples = read_audio(audio_path)
         if video_frames is None:
             video_frames = read_video(video_path, use_decord=False)
 
