@@ -316,9 +316,8 @@ class LipsyncPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        video_path: str,
+        video_frames: Optional[np.ndarray],
         audio_path: str,
-        video_frames: Optional[np.ndarray] = None,
         num_frames: int = 16,
         video_fps: int = 25,
         height: Optional[int] = None,
@@ -366,9 +365,6 @@ class LipsyncPipeline(DiffusionPipeline):
 
         whisper_feature = self.audio_encoder.audio2feat(audio_path)
         whisper_chunks = self.audio_encoder.feature2chunks(feature_array=whisper_feature, fps=video_fps)
-
-        if video_frames is None:
-            video_frames = read_video(video_path, use_decord=False)
 
         video_frames, faces, boxes, affine_matrices = self.loop_video(whisper_chunks, video_frames)
 
