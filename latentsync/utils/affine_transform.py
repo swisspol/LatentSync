@@ -82,14 +82,14 @@ class AlignRestore(object):
         erosion_radius = w_edge * 2
 
         # This step will consume a large amount of GPU memory.
-        # inv_mask_center = kornia.morphology.erosion(
-        #     inv_mask_erosion, torch.ones((erosion_radius, erosion_radius), device=self.device, dtype=self.dtype)
-        # )
+        inv_mask_center = kornia.morphology.erosion(
+            inv_mask_erosion, torch.ones((erosion_radius, erosion_radius), device=self.device, dtype=self.dtype)
+        )
 
         # Run on CPU to avoid consuming a large amount of GPU memory.
-        inv_mask_erosion = inv_mask_erosion.squeeze().cpu().numpy().astype(np.float32)
-        inv_mask_center = cv2.erode(inv_mask_erosion, np.ones((erosion_radius, erosion_radius), np.uint8))
-        inv_mask_center = torch.from_numpy(inv_mask_center).to(device=self.device, dtype=self.dtype)[None, None, ...]
+        # inv_mask_erosion = inv_mask_erosion.squeeze().cpu().numpy().astype(np.float32)
+        # inv_mask_center = cv2.erode(inv_mask_erosion, np.ones((erosion_radius, erosion_radius), np.uint8))
+        # inv_mask_center = torch.from_numpy(inv_mask_center).to(device=self.device, dtype=self.dtype)[None, None, ...]
 
         blur_size = w_edge * 2 + 1
         sigma = 0.3 * ((blur_size - 1) * 0.5 - 1) + 0.8
