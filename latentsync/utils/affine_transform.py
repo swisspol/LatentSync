@@ -61,46 +61,13 @@ class AlignRestore(object):
             fill_value=self.fill_value,
         ).squeeze(0)
 
-        input_tensor = rearrange(
-            torch.from_numpy(input_img).to(device=self.device, dtype=self.dtype), "h w c -> c h w"
-        )
         inv_mask = kornia.geometry.transform.warp_affine(
             self.mask, torch_inverse_affine, (h, w), padding_mode="zeros"
         )  # (1, 1, h_up, w_up)
 
-        inv_mask_erosion = kornia.morphology.erosion(
-            inv_mask,
-            torch.ones(
-                (int(2 * self.upscale_factor), int(2 * self.upscale_factor)), device=self.device, dtype=self.dtype
-            ),
-        )
-
-        inv_mask_erosion_t = inv_mask_erosion.squeeze(0).expand_as(inv_restored)
-        pasted_face = inv_mask_erosion_t * inv_restored
-        total_face_area = torch.sum(inv_mask_erosion.float())
-        w_edge = int(total_face_area**0.5) // 20
-        erosion_radius = w_edge * 2
-
-        # This step will consume a large amount of GPU memory.
-        inv_mask_center = kornia.morphology.erosion(
-            inv_mask_erosion, torch.ones((erosion_radius, erosion_radius), device=self.device, dtype=self.dtype)
-        )
-
-        # Run on CPU to avoid consuming a large amount of GPU memory.
-        # inv_mask_erosion = inv_mask_erosion.squeeze().cpu().numpy().astype(np.float32)
-        # inv_mask_center = cv2.erode(inv_mask_erosion, np.ones((erosion_radius, erosion_radius), np.uint8))
-        # inv_mask_center = torch.from_numpy(inv_mask_center).to(device=self.device, dtype=self.dtype)[None, None, ...]
-
-        blur_size = w_edge * 2 + 1
-        sigma = 0.3 * ((blur_size - 1) * 0.5 - 1) + 0.8
-        inv_soft_mask = kornia.filters.gaussian_blur2d(
-            inv_mask_center, (blur_size, blur_size), (sigma, sigma)
-        ).squeeze(0)
-        inv_soft_mask_3d = inv_soft_mask.expand_as(inv_restored)
-        tensor_img_back = inv_soft_mask_3d * pasted_face + (1 - inv_soft_mask_3d) * input_tensor
-
-        tensor_img_back = tensor_img_back / 255
-        return rearrange(tensor_img_back, "c h w -> h w c")
+        out_face = rearrange(inv_restored / 255, "c h w -> h w c")
+        out_mask = inv_mask.squeeze(0).squeeze(0)  # (h_up, w_up)
+        return (out_face, out_mask)
 
     def transformation_from_points(self, points1: torch.Tensor, points0: torch.Tensor, smooth=True, p_bias=None):
         if isinstance(points0, np.ndarray):
