@@ -161,19 +161,11 @@ class LipsyncPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def check_inputs(self, height, width, callback_steps):
+    def check_inputs(self, height, width):
         assert height == width, "Height and width must be equal"
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
     def prepare_latents(self, batch_size, num_frames, num_channels_latents, height, width, dtype, device, generator):
         shape = (
@@ -328,8 +320,7 @@ class LipsyncPipeline(DiffusionPipeline):
         eta: float = 0.0,
         mask_image_path: str = "latentsync/utils/mask.png",
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback: Optional[Callable[[int, int, int, int], None]] = None,
         **kwargs,
     ):
         is_train = self.denoising_unet.training
@@ -347,7 +338,7 @@ class LipsyncPipeline(DiffusionPipeline):
         width = width or self.denoising_unet.config.sample_size * self.vae_scale_factor
 
         # 2. Check inputs
-        self.check_inputs(height, width, callback_steps)
+        self.check_inputs(height, width)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -449,8 +440,8 @@ class LipsyncPipeline(DiffusionPipeline):
                     # call the callback, if provided
                     if j == len(timesteps) - 1 or ((j + 1) > num_warmup_steps and (j + 1) % self.scheduler.order == 0):
                         progress_bar.update()
-                        if callback is not None and j % callback_steps == 0:
-                            callback(j, t, latents)
+                        if callback is not None:
+                            callback(i, num_inferences, j, num_inference_steps)
 
             # Recover the pixel values
             decoded_latents = self.decode_latents(latents)
