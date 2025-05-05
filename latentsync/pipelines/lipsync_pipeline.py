@@ -335,8 +335,6 @@ class LipsyncPipeline(DiffusionPipeline):
         is_train = self.denoising_unet.training
         self.denoising_unet.eval()
 
-        check_ffmpeg_installed()
-
         # 0. Define call parameters
         batch_size = 1
         device = self._execution_device
