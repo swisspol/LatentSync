@@ -36,6 +36,7 @@ wandb/
 *.jpg
 *.jpeg
 *.csv
+*.pdf
 
 # log files
 *.log
@@ -45,3 +46,4 @@ wandb/
 !/assets/*
 !/docs/*
 !/internal/*.png
+.cog/
