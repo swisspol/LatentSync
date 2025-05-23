@@ -32,14 +32,14 @@ def load_fixed_mask(resolution: int, mask_image_path="latentsync/utils/mask.png"
 
 
 class ImageProcessor:
-    def __init__(self, resolution: int = 512, device: str = "cpu", mask_image=None):
+    def __init__(self, resolution: int = 512, device: str = "cpu", dtype: torch.dtype = torch.float16, mask_image=None):
         self.resolution = resolution
         self.resize = transforms.Resize(
             (resolution, resolution), interpolation=transforms.InterpolationMode.BICUBIC, antialias=True
         )
         self.normalize = transforms.Normalize([0.5], [0.5], inplace=True)
 
-        self.restorer = AlignRestore(resolution=resolution, device=device)
+        self.restorer = AlignRestore(resolution=resolution, device=device, dtype=dtype)
 
         if mask_image is None:
             self.mask_image = load_fixed_mask(resolution)
